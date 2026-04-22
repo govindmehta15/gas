@@ -7,7 +7,7 @@
 // ================= CONFIG =================
 const char *ssid = "YOUR_WIFI_SSID";    // ⚠️ CHANGE THIS
 const char *password = "YOUR_WIFI_PWD"; // ⚠️ CHANGE THIS
-const char *server = "https://your-agro-app.vercel.app";
+const char *server = "https://gas-tawny-ten.vercel.app";
 const char *apiKey = "AGRO_ROVER_SECURE_KEY_2024";
 
 // ================= SENSORS =================
@@ -31,14 +31,43 @@ void setup() {
   lcd.backlight();
   lcd.print("Vanguard booting");
 
+  int retry = 0;
+
+  WiFi.disconnect(true); // Clear previous settings
+  delay(1000);
+  WiFi.mode(WIFI_STA); // Force Station Mode
+
+  Serial.println("Starting WiFi...");
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+
+  while (WiFi.status() != WL_CONNECTED && retry < 20) {
+    delay(1000);
+    retry++;
     lcd.setCursor(0, 1);
-    lcd.print("WiFi connecting...");
+    lcd.print("Connecting... " + String(retry));
+    Serial.print(".");
   }
-  lcd.clear();
-  lcd.print("READY: MISSION");
+
+  if (WiFi.status() == WL_CONNECTED) {
+    lcd.clear();
+    lcd.print("CONNECTED!");
+    lcd.setCursor(0, 1);
+    lcd.print(WiFi.localIP().toString());
+    Serial.println("\nWiFi Connected!");
+  } else {
+    lcd.clear();
+    lcd.print("FAILED: ");
+    int status = WiFi.status();
+    if (status == WL_NO_SSID_AVAIL)
+      lcd.print("NO SSID");
+    else if (status == WL_CONNECT_FAILED)
+      lcd.print("WRONG PWD");
+    else
+      lcd.print(status); // Show numerical code
+
+    Serial.print("\nConnection Failed. Code: ");
+    Serial.println(status);
+  }
 }
 
 void checkServerCommands() {

@@ -6,7 +6,7 @@
 // ================= CONFIG =================
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
-const char* server = "https://your-agro-app.vercel.app";
+const char* server = "https://gas-tawny-ten.vercel.app";
 const char* apiKey = "AGRO_ROVER_SECURE_KEY_2024";
 
 // ================= AI THINKER PINOUT =================
