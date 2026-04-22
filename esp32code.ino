@@ -1,12 +1,12 @@
 #include <ArduinoJson.h>
-#include <HTTPClient.h>
-#include <WiFi.h>
 #include <DHT.h>
+#include <HTTPClient.h>
 #include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
 
 // ================= CONFIG =================
-const char *ssid = "YOUR_WIFI_SSID";
-const char *password = "YOUR_WIFI_PASSWORD";
+const char *ssid = "YOUR_WIFI_SSID";    // ⚠️ CHANGE THIS
+const char *password = "YOUR_WIFI_PWD"; // ⚠️ CHANGE THIS
 const char *server = "https://your-agro-app.vercel.app";
 const char *apiKey = "AGRO_ROVER_SECURE_KEY_2024";
 
@@ -15,47 +15,59 @@ const char *apiKey = "AGRO_ROVER_SECURE_KEY_2024";
 #define DHTTYPE DHT22
 DHT dht(DHTPIN, DHTTYPE);
 
-LiquidCrystal_I2C lcd(0x27, 16, 2); 
-
-HardwareSerial soilSerial(2); // GPIO 16 (RX), 17 (TX)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+HardwareSerial roverSerial(2); // Serial to Arduino (GPIO 16 RX, 17 TX)
 
 // ================= STATE =================
-float phVal = 7.0, ldrVal = 0, soilTemp = 0;
-String currentPlant = "NONE";
+float phVal = 7.0;
+String currentCommand = "";
 
 void setup() {
   Serial.begin(115200);
-  soilSerial.begin(9600, SERIAL_8N1, 16, 17);
-  
+  roverSerial.begin(9600, SERIAL_8N1, 16, 17); // Communication to Arduino
+
   dht.begin();
   lcd.init();
   lcd.backlight();
-  lcd.setCursor(0,0); lcd.print("VANGUARD AGRO");
+  lcd.print("Vanguard booting");
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500); lcd.setCursor(0,1); lcd.print("Connecting WiFi...");
+    delay(500);
+    lcd.setCursor(0, 1);
+    lcd.print("WiFi connecting...");
   }
-  lcd.clear(); lcd.print("WiFi Connected!");
+  lcd.clear();
+  lcd.print("READY: MISSION");
 }
 
-void readSoil() {
-  if (soilSerial.available()) {
-    String data = soilSerial.readStringUntil('\n');
-    // Parser for "PH:x,LDR:x,TEMP:x"
-    int phIdx = data.indexOf("PH:");
-    int ldrIdx = data.indexOf("LDR:");
-    if (phIdx != -1) phVal = data.substring(phIdx + 3, data.indexOf(",", phIdx)).toFloat();
-    if (ldrIdx != -1) ldrVal = data.substring(ldrIdx + 4).toFloat();
-  }
-}
+void checkServerCommands() {
+  if (WiFi.status() != WL_CONNECTED)
+    return;
+  HTTPClient http;
+  http.begin(String(server) + "/api/device/command?device_id=rover_001");
+  http.addHeader("x-api-key", apiKey);
 
-void updateLCD() {
-  lcd.setCursor(0,0);
-  lcd.print("PH:"); lcd.print(phVal, 1);
-  lcd.print(" T:"); lcd.print(dht.readTemperature(), 0);
-  lcd.setCursor(0,1);
-  lcd.print("P:"); lcd.print(currentPlant.substring(0, 10));
+  int code = http.GET();
+  if (code == 200) {
+    String resp = http.getString();
+    StaticJsonDocument<512> doc;
+    deserializeJson(doc, resp);
+
+    String action = doc["action"];
+    // 🚚 RELAY COMMANDS TO ARDUINO
+    if (action == "MOVE_FORWARD")
+      roverSerial.println("M:10"); // Example 10 unit move
+    else if (action == "TURN_RIGHT")
+      roverSerial.println("T:90");
+    else if (action == "EMERGENCY_STOP")
+      roverSerial.println("S");
+
+    // 📱 LOCAL FEEDBACK
+    lcd.setCursor(0, 1);
+    lcd.print(action.substring(0, 16));
+  }
+  http.end();
 }
 
 void sendTelemetry() {
@@ -66,16 +78,8 @@ void sendTelemetry() {
 
   StaticJsonDocument<1024> doc;
   doc["device_id"] = "rover_001";
-  doc["plant_id"] = currentPlant;
-
-  JsonObject sensors = doc.createNestedObject("sensors");
-  JsonObject env = sensors.createNestedObject("environment");
-  env["temperature"] = dht.readTemperature();
-  env["humidity"] = dht.readHumidity();
-
-  JsonObject soil = sensors.createNestedObject("soil");
-  soil["ph"] = phVal;
-  soil["light"] = ldrVal;
+  doc["sensors"]["environment"]["temperature"] = dht.readTemperature();
+  doc["sensors"]["soil"]["ph"] = phVal;
 
   String payload;
   serializeJson(doc, payload);
@@ -84,8 +88,8 @@ void sendTelemetry() {
 }
 
 void loop() {
-  readSoil();
-  updateLCD();
-  if (millis() % 5000 == 0) sendTelemetry();
-  delay(500);
+  checkServerCommands();
+  if (millis() % 5000 == 0)
+    sendTelemetry();
+  delay(1000);
 }
