@@ -1,4 +1,4 @@
-import { connectDB } from "../../../lib/mongodb";
+import { connectDB } from "../../../lib/mongodb.js";
 import { decisionEngine } from "../../../lib/decisionEngine";
 
 export default async function handler(req, res) {

@@ -1,4 +1,4 @@
-import { connectDB } from "../../../lib/mongodb";
+import { connectDB } from "../../../lib/mongodb.js";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).end();
