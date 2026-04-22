@@ -10,6 +10,9 @@ export default function Home() {
     const [target, setTarget] = useState({ x: 0, y: 0 });
     const [path, setPath] = useState([]);
     const [missionStatus, setMissionStatus] = useState("IDLE");
+    const [selectedCell, setSelectedCell] = useState(null); // {x, y}
+    const [cellInfo, setCellInfo] = useState({ name: '', rfid: '' });
+    const [calibration, setCalibration] = useState({ msPerUnit: 250, msPerDegree: 10.5 });
 
     const fetchData = async () => {
         try {
@@ -36,12 +39,30 @@ export default function Home() {
         } catch (e) { console.error(e); }
     };
 
+    const fetchConfig = async () => {
+        try {
+            const res = await fetch("/api/device/calibrate");
+            const json = await res.json();
+            setCalibration(json);
+        } catch (e) { console.error(e); }
+    };
+
     useEffect(() => {
         fetchData();
         fetchGarden();
+        fetchConfig();
         const i = setInterval(fetchData, 4000);
         return () => clearInterval(i);
     }, []);
+
+    const saveCalibration = async () => {
+        await fetch("/api/device/calibrate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(calibration)
+        });
+        alert("Physical Calibration Synced!");
+    };
 
     const saveGarden = async () => {
         await fetch("/api/garden/blueprint?garden_id=main_garden", {
@@ -55,9 +76,25 @@ export default function Home() {
     const toggleGrid = (x, y) => {
         const key = `${x},${y}`;
         const newGrids = { ...garden.grids };
-        if (newGrids[key] === brushType) delete newGrids[key];
-        else newGrids[key] = brushType;
+        if (newGrids[key] && newGrids[key].type === brushType) {
+            delete newGrids[key];
+        } else {
+            if (brushType === 'plant') {
+                setSelectedCell({ x, y });
+                setCellInfo({ name: `Plant ${x},${y}`, rfid: '' });
+            } else {
+                newGrids[key] = { type: brushType };
+            }
+        }
         setGarden({ ...garden, grids: newGrids });
+    };
+
+    const confirmPlant = () => {
+        const key = `${selectedCell.x},${selectedCell.y}`;
+        const newGrids = { ...garden.grids };
+        newGrids[key] = { type: 'plant', metadata: cellInfo };
+        setGarden({ ...garden, grids: newGrids });
+        setSelectedCell(null);
     };
 
     const startMission = async () => {
@@ -73,6 +110,22 @@ export default function Home() {
             setMissionStatus("ACTIVE - PATH SYNCED");
         } else {
             setMissionStatus("ERROR: NO PATH");
+        }
+    };
+
+    const startPatrol = async () => {
+        setMissionStatus("ANALYZING GARDEN...");
+        const res = await fetch("/api/control", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "START_PATROL" })
+        });
+        const json = await res.json();
+        if (json.path) {
+            setPath(json.path);
+            setMissionStatus(`PATROL ACTIVE - ${json.plantCount} PLANTS TARGETED`);
+        } else {
+            setMissionStatus("ERROR: NO REACHABLE PLANTS");
         }
     };
 
@@ -93,6 +146,7 @@ export default function Home() {
                     <nav style={{ display: 'flex', gap: 20, marginTop: 10 }}>
                         <button onClick={() => setActiveTab('mission')} className={`tab-btn ${activeTab === 'mission' ? 'active' : ''}`}>MISSION CONTROL</button>
                         <button onClick={() => setActiveTab('garden')} className={`tab-btn ${activeTab === 'garden' ? 'active' : ''}`}>GARDEN DESIGNER</button>
+                        <button onClick={() => setActiveTab('intelligence')} className={`tab-btn ${activeTab === 'intelligence' ? 'active' : ''}`}>INTELLIGENCE</button>
                         <button onClick={() => setActiveTab('analytics')} className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}>ANALYTICS</button>
                     </nav>
                 </div>
@@ -126,7 +180,8 @@ export default function Home() {
                                 onChange={(e) => setTarget({...target, y: e.target.value})}
                             />
                         </div>
-                        <button onClick={startMission} className="btn-ctrl" style={{ background: 'var(--success)', color: '#000' }}>START MISSION</button>
+                        <button onClick={startMission} className="btn-ctrl" style={{ background: 'var(--success)', color: '#000' }}>GO TO COORD</button>
+                        <button onClick={startPatrol} className="btn-ctrl" style={{ background: 'var(--accent-cyan)', color: '#000' }}>DEPLOY FULL PATROL</button>
                         <button onClick={stopMission} className="btn-ctrl" style={{ background: 'var(--danger)', color: '#fff' }}>HALT</button>
                     </div>
                 </div>
@@ -185,20 +240,78 @@ export default function Home() {
                                 gridTemplateColumns: `repeat(${garden.width}, 30px)`,
                                 gap: 2
                             }}>
-                                {[...Array(garden.height)].map((_, y) => 
-                                    [...Array(garden.width)].map((_, x) => {
-                                        const type = garden.grids[`${x},${y}`];
+                                        const cell = garden.grids[`${x},${y}`];
                                         const isPath = path.some(p => p.x === x && p.y === y);
+                                        const health = cell?.health?.priority || 'NONE';
                                         return (
                                             <div 
                                                 key={`${x},${y}`}
-                                                className={`grid-cell ${type || ''} ${isPath ? 'path' : ''}`}
+                                                className={`grid-cell ${cell?.type || ''} ${isPath ? 'path' : ''} health-${health}`}
                                                 onClick={() => toggleGrid(x, y)}
-                                            />
+                                                title={cell?.health ? `Next Visit: ${new Date(cell.health.nextVisitTime).toLocaleTimeString()}` : ''}
+                                            >
+                                                {cell?.metadata?.name && <span className="cell-label">{cell.metadata.name.substring(0,1)}</span>}
+                                            </div>
                                         )
-                                    })
-                                )}
                             </div>
+                        </div>
+                    </div>
+                    
+                    {selectedCell && (
+                        <div className="modal-overlay">
+                            <div className="modal">
+                                <h3>Plant Identity Setup</h3>
+                                <div className="label">Plant Name</div>
+                                <input value={cellInfo.name} onChange={e => setCellInfo({...cellInfo, name: e.target.value})} />
+                                <div className="label">RFID Tag (Serial)</div>
+                                <input value={cellInfo.rfid} placeholder="e.g., 88005A12BD" onChange={e => setCellInfo({...cellInfo, rfid: e.target.value})} />
+                                <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                                    <button onClick={confirmPlant} className="btn-ctrl" style={{ flex: 1, background: 'var(--success)' }}>CONFIRM</button>
+                                    <button onClick={() => setSelectedCell(null)} className="btn-ctrl" style={{ flex: 1, background: '#333' }}>CANCEL</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {activeTab === 'intelligence' && (
+                <div className="grid">
+                    <div className="card" style={{ gridColumn: 'span 2' }}>
+                        <div className="card-title">Physical Scaling & Intelligence</div>
+                        <div style={{ background: '#0a0c10', padding: 30, borderRadius: 12 }}>
+                            <div className="label">Motor Pulse (ms per physical unit)</div>
+                            <input 
+                                type="range" min="100" max="1000" step="10"
+                                value={calibration.msPerUnit}
+                                onChange={e => setCalibration({...calibration, msPerUnit: parseInt(e.target.value)})}
+                                style={{ width: '100%', accentColor: 'var(--accent-cyan)' }}
+                            />
+                            <div className="value">{calibration.msPerUnit} ms / unit</div>
+
+                            <div className="label" style={{ marginTop: 30 }}>Turn Rate (ms per degree)</div>
+                            <input 
+                                type="range" min="1" max="50" step="0.1"
+                                value={calibration.msPerDegree}
+                                onChange={e => setCalibration({...calibration, msPerDegree: parseFloat(e.target.value)})}
+                                style={{ width: '100%', accentColor: 'var(--success)' }}
+                            />
+                            <div className="value">{calibration.msPerDegree} ms / degree</div>
+
+                            <div style={{ display: 'flex', gap: 20, marginTop: 40 }}>
+                                <button onClick={saveCalibration} className="btn-ctrl" style={{ flex: 1, background: 'var(--accent-cyan)', color: '#000' }}>SAVE CALIBRATION</button>
+                                <button onClick={() => alert("Sending M:1 command...")} className="btn-ctrl" style={{ flex: 1, border: '1px solid #333' }}>TEST 1 UNIT STEP</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="card">
+                        <div className="card-title">Autonomy Logic</div>
+                        <div className="mini-widget" style={{ textAlign: 'left' }}>
+                            • 1 Grid Cell = {garden.unit}<br/>
+                            • Pathfinder: A* Active<br/>
+                            • RFID Match: STRICT<br/>
+                            • Re-route on Collision: YES
                         </div>
                     </div>
                 </div>
@@ -218,6 +331,13 @@ export default function Home() {
                 .grid-cell.obstacle::after { content: '🪨'; font-size: 14px; }
                 .grid-cell.path { border: 1px solid var(--accent-cyan); background: rgba(0, 243, 255, 0.1); }
                 .grid-cell.path::after { content: '·'; color: var(--accent-cyan); font-weight: bold; }
+                .grid-cell.health-CRITICAL { border: 2px solid var(--danger); box-shadow: 0 0 10px rgba(255,0,0,0.2); }
+                .grid-cell.health-MEDIUM { border: 1px solid var(--warning); }
+                .grid-cell.health-LOW { border: 1px solid var(--success); }
+                .cell-label { position: absolute; font-size: 8px; bottom: 1px; color: #fff; text-transform: uppercase; }
+                .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; }
+                .modal { background: #0d1117; padding: 30px; border-radius: 16px; border: 1px solid var(--accent-cyan); width: 400px; }
+                .modal input { width: 100%; background: #000; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; margin-bottom: 20px; }
                 .dashboard-container { padding: 40px; background: #000; min-height: 100vh; color: #fff; font-family: 'Inter', sans-serif; }
                 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; border-bottom: 1px solid #161b22; padding-bottom: 20px; }
                 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }

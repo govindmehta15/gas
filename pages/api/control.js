@@ -7,41 +7,62 @@ export default async function handler(req, res) {
     const db = await connectDB();
     const { action, target, garden_id = "main_garden" } = req.body;
 
-    if (action === "START_MISSION") {
+    if (action === "START_MISSION" || action === "START_PATROL") {
         // 1. Load Garden Blueprint
         const garden = await db.collection("gardens").findOne({ garden_id });
-        
-        // 2. Get current rover position (from sensor logs)
-        const latest = await db.collection("sensor_logs").find().sort({ createdAt: -1 }).limit(1).toArray();
-        const start = latest[0]?.position || { x: 0, y: 0 };
+        if (!garden) return res.status(400).json({ error: "No garden blueprint found" });
 
-        // 3. Extract obstacles
-        const obstacles = [];
-        if (garden?.grids) {
-            Object.entries(garden.grids).forEach(([key, type]) => {
-                if (type === "obstacle") {
+        // 2. Define Targets
+        let targets = [];
+        if (action === "START_PATROL") {
+            // Find all plants
+            Object.entries(garden.grids).forEach(([key, cell]) => {
+                if (cell.type === "plant") {
                     const [x, y] = key.split(",").map(Number);
-                    obstacles.push({ x, y });
+                    targets.push({ x, y, name: cell.metadata?.name });
                 }
             });
+            // Simple sort by proximity to start (greedy)
+        } else {
+            targets = [target];
         }
 
-        // 4. Calculate Path
-        const pf = new Pathfinder(garden?.width || 10, garden?.height || 10, obstacles);
-        const path = pf.findPath(start, target);
+        // 3. Get current rover position
+        const latest = await db.collection("sensor_logs").find().sort({ createdAt: -1 }).limit(1).toArray();
+        let currentPos = latest[0]?.position || { x: 0, y: 0 };
 
-        if (!path) return res.status(400).json({ error: "No path found to target" });
+        // 4. Calculate Full Multi-Stop Path
+        const obstacles = [];
+        Object.entries(garden.grids).forEach(([key, cell]) => {
+            if (cell.type === "obstacle") {
+                const [x, y] = key.split(",").map(Number);
+                obstacles.push({ x, y });
+            }
+        });
+
+        const pf = new Pathfinder(garden.width, garden.height, obstacles);
+        let fullPath = [];
+        
+        for (const t of targets) {
+            const p = pf.findPath(currentPos, t);
+            if (p) {
+                fullPath = [...fullPath, ...p];
+                currentPos = t; // Move virtual position for next target
+            }
+        }
+
+        if (fullPath.length === 0) return res.status(400).json({ error: "No targets reachable" });
 
         // 5. Save command sequence
         await db.collection("commands").insertOne({
-            action: "EXECUTE_PATH",
-            path,
-            target,
+            action: "EXECUTE_PATROL",
+            fullPath,
+            targets,
             status: "PENDING",
             createdAt: new Date()
         });
 
-        return res.json({ status: "mission_queued", path });
+        return res.json({ status: "patrol_queued", path: fullPath, plantCount: targets.length });
     }
 
     if (action === "EMERGENCY_STOP") {

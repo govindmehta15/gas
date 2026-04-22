@@ -1,4 +1,5 @@
 import { connectDB } from "../../../lib/mongodb.js";
+import { planNextVisit } from "../../../lib/engines/taskPlanner.js";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).end();
@@ -44,6 +45,29 @@ export default async function handler(req, res) {
             types: alerts,
             createdAt: new Date()
         });
+    }
+
+    // 3. Smart Scheduling: Decide next visit based on health
+    const healthPlan = planNextVisit({ device_id: data.device_id, plant_id: data.plant_id }, data.sensors);
+    
+    await db.collection("sensor_logs").insertOne({
+        device_id: data.device_id,
+        plant_id: data.plant_id,
+        sensors: data.sensors,
+        position: data.position,
+        healthPlan, // Store the priority and next visit time
+        createdAt: new Date()
+    });
+
+    // 4. Update the Garden Blueprint with the latest health status
+    if (data.plant_id && data.plant_id !== "NONE") {
+        const [x, y] = data.plant_id.split(","); // Assuming plant_id format "x,y"
+        if (!isNaN(x) && !isNaN(y)) {
+             await db.collection("gardens").updateOne(
+                { "grids": { [data.plant_id]: { "$exists": true } } }, 
+                { "$set": { [`grids.${x},${y}.health`]: healthPlan } }
+            );
+        }
     }
 
     res.json({ status: "synced", alerts: alerts.length });
