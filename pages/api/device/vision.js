@@ -1,12 +1,14 @@
 import { connectDB } from "../../../lib/mongodb.js";
 
-export default async function handler(req, res) {
-    if (req.method !== "POST") return res.status(405).end();
+    const db = await connectDB();
 
-    const apiKey = req.headers["x-api-key"];
-    if (apiKey !== "AGRO_ROVER_SECURE_KEY_2024") {
-        return res.status(401).json({ error: "Unauthorized" });
+    if (req.method === "GET") {
+        const { device_id } = req.query;
+        const feed = await db.collection("vision_feed").findOne({ device_id });
+        return res.json(feed || { error: "No vision data found" });
     }
+
+    if (req.method !== "POST") return res.status(405).end();
 
     const { device_id, image_data, plant_id } = req.body;
     const db = await connectDB();

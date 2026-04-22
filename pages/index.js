@@ -12,15 +12,17 @@ export default function Home() {
             const json = await res.json();
             setData(json.data || {});
             
-            // Check online status
             if (json.data?.createdAt) {
                 const diff = (new Date() - new Date(json.data.createdAt)) / 1000;
                 setIsOnline(diff < 15);
             }
 
-            // Fetch Latest Vision
-            const vRes = await fetch("/api/status"); // Assuming vision is part of master status for speed
-            // Or a separate endpoint if needed...
+            // 📷 Fetch Latest Vision Frame
+            const vRes = await fetch("/api/device/vision?device_id=esp32_cam_001");
+            const vJson = await vRes.json();
+            if (vJson.image_data) {
+                setVision(vJson);
+            }
         } catch (e) {
             console.error(e);
         }
