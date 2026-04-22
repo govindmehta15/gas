@@ -37,6 +37,8 @@ export default function Home() {
             const res = await fetch("/api/garden/blueprint?garden_id=main_garden");
             const json = await res.json();
             setGarden(json);
+            if (json.activePath) setPath(json.activePath);
+            if (json.missionStatus) setMissionStatus(json.missionStatus);
         } catch (e) { console.error(e); }
     };
 

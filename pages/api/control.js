@@ -60,7 +60,7 @@ export default async function handler(req, res) {
         // 6. Translate Path to Physical Commands
         const movementCommands = translatePathToCommands(fullPath, config);
 
-        // 7. Save command sequence
+        // 7. Save command sequence and Update Garden State
         await db.collection("commands").insertOne({
             action: "EXECUTE_PATROL",
             path: fullPath,
@@ -70,7 +70,15 @@ export default async function handler(req, res) {
             createdAt: new Date()
         });
 
-        return res.json({ status: "patrol_queued", commandsCount: movementCommands.length, plantCount: targets.length });
+        await db.collection("gardens").updateOne(
+            { garden_id },
+            { $set: { 
+                activePath: fullPath, 
+                missionStatus: action === "START_PATROL" ? `PATROL ACTIVE - ${targets.length} PLANTS` : "MISSION ACTIVE" 
+            }}
+        );
+
+        return res.json({ status: "patrol_queued", commandsCount: movementCommands.length, plantCount: targets.length, path: fullPath });
     }
 
     if (action === "EMERGENCY_STOP") {
@@ -78,6 +86,10 @@ export default async function handler(req, res) {
             action: "EMERGENCY_STOP",
             createdAt: new Date()
         });
+        await db.collection("gardens").updateOne(
+            { garden_id },
+            { $set: { activePath: [], missionStatus: "IDLE" }}
+        );
         return res.json({ status: "halted" });
     }
 

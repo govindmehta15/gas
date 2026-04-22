@@ -14,9 +14,10 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
+        const id = req.query.device_id || req.body.device_id || "rover_001";
         const { msPerUnit, msPerDegree } = req.body;
         await db.collection("config").updateOne(
-            { device_id },
+            { device_id: id },
             { $set: { msPerUnit, msPerDegree, updatedAt: new Date() } },
             { upsert: true }
         );

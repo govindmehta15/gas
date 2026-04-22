@@ -16,9 +16,10 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "POST") {
-        const { garden_id, grids, width, height, unit } = req.body;
+        const id = garden_id || req.body.garden_id; // Support both query and body
+        const { grids, width, height, unit } = req.body;
         await db.collection("gardens").updateOne(
-            { garden_id },
+            { garden_id: id },
             { $set: { grids, width, height, unit, updatedAt: new Date() } },
             { upsert: true }
         );

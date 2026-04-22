@@ -17,12 +17,20 @@ export default async function handler(req, res) {
 
     const data = latestLogs[0];
 
-    // 2. Fetch Garden Metadata for this plant
+    // 2. Fetch Garden Metadata and Vision Feed
     const garden = await db.collection("gardens").findOne({ garden_id: "main_garden" });
     const plantMetadata = garden?.grids[data.plant_id]?.metadata || {};
 
-    // 3. Generate Generative Report
-    const report = generateAIInsight(data, plantMetadata);
+    const visionLogs = await db.collection("vision_feed")
+        .find({ device_id: "esp32_cam_001" })
+        .sort({ updatedAt: -1 })
+        .limit(1)
+        .toArray();
+    
+    const visionData = visionLogs[0] || null;
+
+    // 3. Generate Generative Report with Vision Context
+    const report = generateAIInsight(data, plantMetadata, visionData);
 
     return res.json({ report });
 }
