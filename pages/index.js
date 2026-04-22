@@ -240,6 +240,8 @@ export default function Home() {
                                 gridTemplateColumns: `repeat(${garden.width}, 30px)`,
                                 gap: 2
                             }}>
+                                {[...Array(garden.height)].map((_, y) => 
+                                    [...Array(garden.width)].map((_, x) => {
                                         const cell = garden.grids[`${x},${y}`];
                                         const isPath = path.some(p => p.x === x && p.y === y);
                                         const health = cell?.health?.priority || 'NONE';
@@ -253,6 +255,8 @@ export default function Home() {
                                                 {cell?.metadata?.name && <span className="cell-label">{cell.metadata.name.substring(0,1)}</span>}
                                             </div>
                                         )
+                                    })
+                                )}
                             </div>
                         </div>
                     </div>
