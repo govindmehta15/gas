@@ -1,5 +1,6 @@
 import { connectDB } from "../../../lib/mongodb.js";
 
+export default async function handler(req, res) {
     const db = await connectDB();
 
     if (req.method === "GET") {
@@ -11,7 +12,6 @@ import { connectDB } from "../../../lib/mongodb.js";
     if (req.method !== "POST") return res.status(405).end();
 
     const { device_id, image_data, plant_id } = req.body;
-    const db = await connectDB();
 
     // Store the latest vision frame
     await db.collection("vision_feed").updateOne(
