@@ -1,5 +1,6 @@
 import { connectDB } from "../../lib/mongodb.js";
 import { Pathfinder } from "../../lib/engines/pathfinder.js";
+import { translatePathToCommands } from "../../lib/engines/movementEngine.js";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).end();
@@ -47,22 +48,29 @@ export default async function handler(req, res) {
             const p = pf.findPath(currentPos, t);
             if (p) {
                 fullPath = [...fullPath, ...p];
-                currentPos = t; // Move virtual position for next target
+                currentPos = t; 
             }
         }
 
         if (fullPath.length === 0) return res.status(400).json({ error: "No targets reachable" });
 
-        // 5. Save command sequence
+        // 5. Load Calibration Data
+        const config = await db.collection("config").findOne({ device_id: "rover_001" }) || { msPerUnit: 250, msPerDegree: 10.5 };
+
+        // 6. Translate Path to Physical Commands
+        const movementCommands = translatePathToCommands(fullPath, config);
+
+        // 7. Save command sequence
         await db.collection("commands").insertOne({
             action: "EXECUTE_PATROL",
-            fullPath,
+            path: fullPath,
+            movementCommands,
             targets,
             status: "PENDING",
             createdAt: new Date()
         });
 
-        return res.json({ status: "patrol_queued", path: fullPath, plantCount: targets.length });
+        return res.json({ status: "patrol_queued", commandsCount: movementCommands.length, plantCount: targets.length });
     }
 
     if (action === "EMERGENCY_STOP") {

@@ -13,6 +13,7 @@ export default function Home() {
     const [selectedCell, setSelectedCell] = useState(null); // {x, y}
     const [cellInfo, setCellInfo] = useState({ name: '', rfid: '' });
     const [calibration, setCalibration] = useState({ msPerUnit: 250, msPerDegree: 10.5 });
+    const [aiReport, setAiReport] = useState("Vanguard AI initialized. Waiting for strategic link...");
 
     const fetchData = async () => {
         try {
@@ -47,13 +48,25 @@ export default function Home() {
         } catch (e) { console.error(e); }
     };
 
+    const fetchAIReport = async () => {
+        try {
+            const res = await fetch("/api/analytics/ai-insight");
+            const json = await res.json();
+            setAiReport(json.report);
+        } catch (e) { console.error(e); }
+    };
+
     useEffect(() => {
         fetchData();
         fetchGarden();
         fetchConfig();
-        const i = setInterval(fetchData, 4000);
+        if (activeTab === 'analytics') fetchAIReport();
+        const i = setInterval(() => {
+            fetchData();
+            if (activeTab === 'analytics') fetchAIReport();
+        }, 4000);
         return () => clearInterval(i);
-    }, []);
+    }, [activeTab]);
 
     const saveCalibration = async () => {
         await fetch("/api/device/calibrate", {
@@ -147,7 +160,7 @@ export default function Home() {
                         <button onClick={() => setActiveTab('mission')} className={`tab-btn ${activeTab === 'mission' ? 'active' : ''}`}>MISSION CONTROL</button>
                         <button onClick={() => setActiveTab('garden')} className={`tab-btn ${activeTab === 'garden' ? 'active' : ''}`}>GARDEN DESIGNER</button>
                         <button onClick={() => setActiveTab('intelligence')} className={`tab-btn ${activeTab === 'intelligence' ? 'active' : ''}`}>INTELLIGENCE</button>
-                        <button onClick={() => setActiveTab('analytics')} className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}>ANALYTICS</button>
+                        <button onClick={() => setActiveTab('analytics')} className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}>VANGUARD AI ADVISOR</button>
                     </nav>
                 </div>
                 <div className={`status-badge ${isOnline ? 'status-online' : 'status-offline'}`}>
@@ -339,6 +352,14 @@ export default function Home() {
                 .grid-cell.health-MEDIUM { border: 1px solid var(--warning); }
                 .grid-cell.health-LOW { border: 1px solid var(--success); }
                 .cell-label { position: absolute; font-size: 8px; bottom: 1px; color: #fff; text-transform: uppercase; }
+                .ai-report-box { 
+                    background: rgba(0, 243, 255, 0.02); 
+                    padding: 30px; 
+                    border-radius: 12px; 
+                    border: 1px solid #161b22; 
+                    min-height: 400px;
+                    font-family: 'JetBrains Mono', 'Courier New', monospace;
+                }
                 .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 100; }
                 .modal { background: #0d1117; padding: 30px; border-radius: 16px; border: 1px solid var(--accent-cyan); width: 400px; }
                 .modal input { width: 100%; background: #000; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; margin-bottom: 20px; }
