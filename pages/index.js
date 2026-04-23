@@ -14,6 +14,7 @@ export default function Home() {
     const [cellInfo, setCellInfo] = useState({ name: '', rfid: '' });
     const [calibration, setCalibration] = useState({ msPerUnit: 250, msPerDegree: 10.5 });
     const [aiReport, setAiReport] = useState("Vanguard AI initialized. Waiting for strategic link...");
+    const [systemPower, setSystemPower] = useState('LIVE');
 
     const fetchData = async () => {
         if (systemPower === "STANDBY") return;
