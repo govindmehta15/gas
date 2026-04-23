@@ -16,10 +16,12 @@ export default function Home() {
     const [aiReport, setAiReport] = useState("Vanguard AI initialized. Waiting for strategic link...");
 
     const fetchData = async () => {
+        if (systemPower === "STANDBY") return;
         try {
             const res = await fetch("/api/status");
             const json = await res.json();
             setData(json.data || {});
+            setSystemPower(json.systemPower || "LIVE");
             
             if (json.data?.createdAt) {
                 const diff = (new Date() - new Date(json.data.createdAt)) / 1000;
@@ -62,13 +64,24 @@ export default function Home() {
         fetchData();
         fetchGarden();
         fetchConfig();
-        if (activeTab === 'analytics') fetchAIReport();
         const i = setInterval(() => {
-            fetchData();
-            if (activeTab === 'analytics') fetchAIReport();
+            if (systemPower === "LIVE") {
+                fetchData();
+                if (activeTab === 'analytics') fetchAIReport();
+            }
         }, 4000);
         return () => clearInterval(i);
-    }, [activeTab]);
+    }, [activeTab, systemPower]);
+
+    const togglePower = async () => {
+        const nextState = systemPower === "LIVE" ? "STANDBY" : "LIVE";
+        setSystemPower(nextState);
+        await fetch("/api/system/power", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ systemPower: nextState })
+        });
+    };
 
     const saveCalibration = async () => {
         await fetch("/api/device/calibrate", {
@@ -165,8 +178,13 @@ export default function Home() {
                         <button onClick={() => setActiveTab('analytics')} className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}>VANGUARD AI ADVISOR</button>
                     </nav>
                 </div>
-                <div className={`status-badge ${isOnline ? 'status-online' : 'status-offline'}`}>
-                    {isOnline ? '● ROVER ONLINE' : '○ DISCONNECTED'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+                    <div onClick={togglePower} className={`power-toggle ${systemPower}`}>
+                        {systemPower === "LIVE" ? "● SYSTEM LIVE" : "○ STANDBY"}
+                    </div>
+                    <div className={`status-badge ${isOnline ? 'status-online' : 'status-offline'}`}>
+                        {isOnline ? '● ROVER ONLINE' : '○ DISCONNECTED'}
+                    </div>
                 </div>
             </header>
 
@@ -354,6 +372,10 @@ export default function Home() {
                 .grid-cell.health-MEDIUM { border: 1px solid var(--warning); }
                 .grid-cell.health-LOW { border: 1px solid var(--success); }
                 .cell-label { position: absolute; font-size: 8px; bottom: 1px; color: #fff; text-transform: uppercase; }
+                .power-toggle { padding: 8px 16px; border-radius: 20px; font-size: 0.7rem; font-weight: bold; cursor: pointer; transition: all 0.3s; boundary-bottom: 2px solid transparent; }
+                .power-toggle.LIVE { background: rgba(0, 243, 255, 0.1); color: var(--accent-cyan); border: 1px solid rgba(0, 243, 255, 0.3); }
+                .power-toggle.STANDBY { background: #161b22; color: #8b949e; border: 1px solid #30363d; opacity: 0.6; }
+                .power-toggle:hover { filter: brightness(1.2); }
                 .ai-report-box { 
                     background: rgba(0, 243, 255, 0.02); 
                     padding: 30px; 
